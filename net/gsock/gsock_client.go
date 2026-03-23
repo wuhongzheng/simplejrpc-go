@@ -16,10 +16,11 @@ import (
 //   - idCounter: Atomic counter for generating unique request IDs
 //   - keepLive:  Flag controlling whether connections should be kept alive after requests
 type rpcClient struct {
-	sockPath  string        // Path to the Unix domain socket
-	adapter   ClientAdapter // Protocol adapter (defaults to JSON-RPC)
-	idCounter int64         // Atomic counter for generating request IDs
-	keepLive  bool          // Connection persistence flag
+	sockPath    string        // Path to the Unix domain socket
+	adapter     ClientAdapter // Protocol adapter (defaults to JSON-RPC)
+	streamCodec FrameCodec
+	idCounter   int64 // Atomic counter for generating request IDs
+	keepLive    bool  // Connection persistence flag
 }
 
 // NewRpcKeepLivClient creates a new RPC client with connection persistence disabled.
@@ -36,9 +37,9 @@ type rpcClient struct {
 //	Uses JsonRpcSimpleClient as the default adapter
 func NewRpcSimpleClient(socketPath string) *rpcClient {
 	return &rpcClient{
-		sockPath:  socketPath,
-		adapter:   &JsonRpcSimpleClient{},
-		idCounter: 0,
+		sockPath:    socketPath,
+		adapter:     &JsonRpcSimpleClient{},
+		streamCodec: &LengthFrameCodec{},
 	}
 }
 
@@ -56,10 +57,10 @@ func NewRpcSimpleClient(socketPath string) *rpcClient {
 //	Uses JsonRpcSimpleClient as the default adapter
 func NewRpcKeepLiveClient(socketPath string) *rpcClient {
 	return &rpcClient{
-		sockPath:  socketPath,
-		adapter:   &JsonRpcSimpleClient{},
-		idCounter: 0,
-		keepLive:  true,
+		sockPath:    socketPath,
+		adapter:     &JsonRpcSimpleClient{},
+		streamCodec: &LengthFrameCodec{},
+		keepLive:    true,
 	}
 }
 
@@ -104,4 +105,22 @@ func (c *rpcClient) Request(ctx context.Context, method string, params, result a
 
 	client := c.adapter.NewConn(ctx, conn)
 	return client.Request(ctx, method, params, result, opts...)
+}
+
+func (c *rpcClient) RequestStream(
+	ctx context.Context,
+	method string,
+	params any,
+	onStream StreamHandler,
+	opts ...jsonrpc2.CallOption) error {
+	conn, err := net.Dial("unix", c.sockPath)
+	if err != nil {
+		return err
+	}
+	if !c.keepLive {
+		defer conn.Close()
+	}
+
+	client := NewFrameStreamClient(conn, c.streamCodec)
+	return client.RequestStream(ctx, method, params, onStream, opts...)
 }

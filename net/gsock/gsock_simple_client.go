@@ -2,6 +2,7 @@ package gsock
 
 import (
 	"context"
+	"errors"
 	"net"
 
 	"github.com/sourcegraph/jsonrpc2"
@@ -34,6 +35,21 @@ func (c *JsonRpcSimpleClientHandler) Request(
 	opts ...jsonrpc2.CallOption,
 ) error {
 	return c.conn.Call(ctx, method, params, result, opts...)
+}
+
+func (c *JsonRpcSimpleClientHandler) RequestStream(
+	ctx context.Context,
+	method string,
+	params any,
+	onStream StreamHandler,
+	opts ...jsonrpc2.CallOption,
+) error {
+	_ = ctx
+	_ = method
+	_ = params
+	_ = onStream
+	_ = opts
+	return errors.New("legacy jsonrpc client does not support RequestStream; use frame stream client")
 }
 
 // JsonRpcSimpleClient implements ClientAdapter for creating JSON-RPC 2.0 clients

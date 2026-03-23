@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
 
@@ -124,6 +125,7 @@ type JsonRpcSimpleServiceOptionFunc func(*JsonRpcSimpleService)
 type JsonRpcSimpleService struct {
 	handler     IRpcServiceHandle // Core request handler implementation
 	middlewares []RPCMiddleware   // Service-level middleware chain
+	codec       FrameCodec
 }
 
 // NewDefaultJsonRpcSimpleService creates a service instance with default configuration.
@@ -133,6 +135,7 @@ func NewDefaultJsonRpcSimpleService(handler IRpcServiceHandle) *JsonRpcSimpleSer
 	return &JsonRpcSimpleService{
 		handler:     handler,
 		middlewares: make([]RPCMiddleware, 0),
+		codec:       &LengthFrameCodec{},
 	}
 }
 
@@ -154,13 +157,29 @@ func WithJsonRpcSimpleServiceMiddlewares(middlewares ...RPCMiddleware) JsonRpcSi
 	}
 }
 
+func WithJsonRpcSimpleServiceCodec(codec FrameCodec) JsonRpcSimpleServiceOptionFunc {
+	return func(s *JsonRpcSimpleService) {
+		s.codec = codec
+	}
+}
+
 // NewJsonRpcSimpleService creates a new service instance with custom configuration.
 // opts: Optional configuration functions
 // Returns: Configured service instance
 func NewJsonRpcSimpleService(opts ...JsonRpcSimpleServiceOptionFunc) *JsonRpcSimpleService {
-	rpc := &JsonRpcSimpleService{}
+	rpc := &JsonRpcSimpleService{
+		handler:     NewJsonRpcSimpleServiceHandler(),
+		middlewares: make([]RPCMiddleware, 0),
+		codec:       &LengthFrameCodec{},
+	}
 	for _, opt := range opts {
 		opt(rpc)
+	}
+	if rpc.codec == nil {
+		rpc.handler = NewJsonRpcSimpleServiceHandler()
+	}
+	if rpc.codec == nil {
+		rpc.codec = &LengthFrameCodec{}
 	}
 	return rpc
 }
@@ -223,9 +242,26 @@ func (r *JsonRpcSimpleService) Handle(
 	conn *jsonrpc2.Conn,
 	req *jsonrpc2.Request,
 ) (any, error) {
+	rawReq := &RawRequest{
+		// todo 检查当前JSONRPC如何取到
+		JSONRPC: "2.0",
+		Method:  req.Method,
+	}
+	if req.ID.Str != "" {
+		// todo 暂不增强
+	}
+	if req.ID.Num != 0 {
+		rawReq.ID = req.ID.Num
+	}
+	if req.Params != nil {
+		params := *req.Params
+		rawReq.Params = &params
+	}
+
 	request := MakeRequest(
 		WithRequestCtxOption(ctx),
-		WithRequestReqOption(req),
+		WithRequestReqOption(rawReq),
+		WithRequestModeOption(CallModeUnary),
 	)
 	r.ProcessRequest(request)
 
@@ -235,4 +271,209 @@ func (r *JsonRpcSimpleService) Handle(
 	}
 
 	return r.ProcessResponse(response)
+}
+
+func (r *JsonRpcSimpleService) ServeFrameConn(ctx context.Context, conn net.Conn) error {
+	for {
+		frame, err := r.codec.ReadFrame(conn)
+		if err != nil {
+			if err == io.EOF {
+				return nil
+			}
+			return err
+		}
+
+		if frame.Header.Mode == 0 {
+			frame.Header.Mode = CallModeUnary
+		}
+
+		var req RPCRequest
+		if err := json.Unmarshal(frame.Payload, &req); err != nil {
+			_ = r.writeFrameUnaryError(conn, 0, http.StatusBadRequest, "parse error")
+			continue
+		}
+		if req.JSONRPC == "" {
+			req.JSONRPC = "2.0"
+		}
+
+		if err := r.handleFrameRequest(ctx, conn, frame.Header, &req); err != nil {
+			if frame.Header.Mode == CallModeUnary {
+				_ = r.writeFrameUnaryError(conn, req.ID, http.StatusInternalServerError, err.Error())
+			}
+		}
+	}
+}
+
+func (r *JsonRpcSimpleService) handleFrameRequest(
+	ctx context.Context,
+	conn net.Conn,
+	header Header,
+	rpcReq *RPCRequest) error {
+	rawReq := &RawRequest{
+		JSONRPC: rpcReq.JSONRPC,
+		ID:      rpcReq.ID,
+		Method:  rpcReq.Method,
+	}
+	if len(rpcReq.Params) > 0 {
+		params := rpcReq.Params
+		rawReq.Params = &params
+	}
+
+	var responder StreamResponder
+	var streamID string
+	if header.Mode == CallModeStream {
+		responder = newStreamResponder(ctx, conn, r.codec, rpcReq.ID, rpcReq.Method, "")
+		streamID = responder.StreamID()
+	}
+
+	request := MakeRequest(
+		WithRequestCtxOption(ctx),
+		WithRequestReqOption(rawReq),
+		WithRequestModeOption(header.Mode),
+		WithRequestStreamIDOption(streamID),
+		WithRequestStreamOption(responder),
+	)
+
+	r.ProcessRequest(request)
+
+	response, err := r.handler.Handle(request)
+
+	if err != nil {
+		if request.IsStream() && request.Stream() != nil {
+			return request.Stream().Fail(http.StatusInternalServerError, err.Error())
+		}
+		return err
+	}
+
+	if !request.IsStream() {
+		out, err := r.ProcessResponse(response)
+		if err != nil {
+			return err
+		}
+		return r.writeFrameUnaryResult(conn, rpcReq.ID, out)
+	}
+	return r.handleStreamResponse(request, response)
+}
+
+func (r *JsonRpcSimpleService) handleStreamResponse(req *Request, response any) error {
+	responder := req.Stream()
+	if responder == nil {
+		return fmt.Errorf("stream responder is nil")
+	}
+
+	if responder.Used() {
+		if !responder.Ended() {
+			return responder.End(map[string]any{
+				Endpoint: req.Method(),
+				Close:    1,
+			})
+		}
+		return nil
+	}
+
+	out, err := r.ProcessResponse(response)
+	if err != nil {
+		return responder.Fail(http.StatusInternalServerError, err.Error())
+	}
+
+	switch v := out.(type) {
+	case *StreamResult:
+		if err := responder.Start(map[string]any{
+			Endpoint: req.Method(),
+			Close:    0,
+		}); err != nil {
+			return err
+		}
+		if err := v.Producer(func(event string, data any) error {
+			return responder.Send(event, data)
+		}); err != nil {
+			return responder.Fail(http.StatusInternalServerError, err.Error())
+		}
+		return responder.End(map[string]any{
+			Endpoint: req.Method(),
+			Close:    1,
+		})
+	case *Response:
+		if v.Code >= http.StatusBadRequest {
+			return responder.Fail(v.Code, v.Message)
+		}
+
+		if sr, ok := v.Data.(*StreamResult); ok && sr != nil {
+			if err := responder.Start(map[string]any{
+				Endpoint: req.Method(),
+				Close:    0,
+			}); err != nil {
+				return err
+			}
+			if err := sr.Producer(func(event string, data any) error {
+				return responder.Send(event, data)
+			}); err != nil {
+				return responder.Fail(http.StatusInternalServerError, err.Error())
+			}
+			return responder.End(map[string]any{
+				Endpoint: req.Method(),
+				Close:    1,
+			})
+		}
+
+		if err := responder.Start(map[string]any{
+			Endpoint: req.Method(),
+			Close:    0,
+		}); err != nil {
+			return err
+		}
+		if err := responder.Send(StreamEventContent, v.Data); err != nil {
+			return err
+		}
+		return responder.End(map[string]any{
+			Endpoint: req.Method(),
+			Close:    1,
+		})
+	default:
+		if err := responder.Start(map[string]any{
+			Endpoint: req.Method(),
+			Close:    0,
+		}); err != nil {
+			return err
+		}
+		return responder.End(map[string]any{
+			Endpoint: req.Method(),
+			Close:    1,
+		})
+	}
+}
+
+func (r *JsonRpcSimpleService) writeFrameUnaryResult(conn net.Conn, id uint64, result any) error {
+	body, err := json.Marshal(result)
+	if err != nil {
+		return err
+	}
+
+	return r.codec.WriteFrame(conn, &Frame{
+		Header: Header{
+			Version: ProtocolVersion,
+			Mode:    CallModeUnary,
+		},
+		Payload: body,
+	})
+}
+
+func (r *JsonRpcSimpleService) writeFrameUnaryError(conn net.Conn, id uint64, code int, message string) error {
+	resp := NewResponse()
+	resp.Code = code
+	resp.Message = message
+	resp.Data = nil
+
+	body, err := json.Marshal(resp)
+	if err != nil {
+		return err
+	}
+	return r.codec.WriteFrame(conn, &Frame{
+		Header: Header{
+			Version: ProtocolVersion,
+			Mode:    CallModeUnary,
+		},
+		Payload: body,
+	})
+
 }

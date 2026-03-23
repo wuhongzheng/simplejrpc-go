@@ -49,6 +49,9 @@ type IRpcService interface {
 
 	// Handle processes incoming JSON-RPC requests
 	Handle(ctx context.Context, conn *jsonrpc2.Conn, req *jsonrpc2.Request) (any, error)
+
+	// ServeFrameConn add new frame connection
+	ServeFrameConn(ctx context.Context, conn net.Conn) error
 }
 
 // IRpcServiceHandle provides a simplified handler-only interface
@@ -56,6 +59,8 @@ type IRpcServiceHandle interface {
 	IRpcHandler
 	Handle(req *Request) (any, error)
 }
+
+type StreamHandler func(msg StreamFrame) error
 
 // IRpcClient defines the client interface for making RPC calls
 type IRpcClient interface {
@@ -67,6 +72,9 @@ type IRpcClient interface {
 	//   - result: Pointer to struct for response decoding
 	//   - opts: Additional call options
 	Request(ctx context.Context, method string, params, result any, opts ...jsonrpc2.CallOption) error
+
+	// RequestStream add stream request client
+	RequestStream(ctx context.Context, method string, params any, onStream StreamHandler, opts ...jsonrpc2.CallOption) error
 }
 
 // ClientAdapter creates client connections for different protocols

@@ -89,8 +89,23 @@ func (s *rpcServer) StartServer(socketPath string) error {
 
 		// Handle each connection in a separate goroutine
 		go func(conn net.Conn) {
+			defer func() { _ = conn.Close() }()
 			// defer conn.Close()
-			s.service.NewConn(ctx, conn)
+			pc := newPeekConn(conn)
+
+			// peek new protocol：
+			// 新 frame 协议第一个字节固定为 ProtocolVersion(1)
+			// 老 VSCodeObjectCodec 一般以 'C' 开头（Content-Length: ...）
+			peek, err := pc.Peek(1)
+			if err == nil && len(peek) == 1 && peek[0] == ProtocolVersion {
+				if err := s.service.ServeFrameConn(ctx, pc); err != nil {
+					log.Printf("serve frame connect failed: %v", err)
+				}
+				return
+			}
+			// Continue with the unary
+			newConn := s.service.NewConn(ctx, pc)
+			<-newConn.DisconnectNotify()
 		}(conn)
 	}
 }
