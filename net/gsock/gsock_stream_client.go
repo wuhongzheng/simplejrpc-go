@@ -8,11 +8,14 @@ import (
 	"net/http"
 )
 
+// FrameStreamClient implements frame-based streaming request handling.
 type FrameStreamClient struct {
 	conn  net.Conn
 	codec FrameCodec
 }
 
+// NewFrameStreamClient creates a frame stream client with the provided connection and codec.
+// If codec is nil, LengthFrameCodec is used by default.
 func NewFrameStreamClient(conn net.Conn, codec FrameCodec) *FrameStreamClient {
 	if codec == nil {
 		codec = &LengthFrameCodec{}
@@ -23,6 +26,8 @@ func NewFrameStreamClient(conn net.Conn, codec FrameCodec) *FrameStreamClient {
 	}
 }
 
+// Request is unsupported for FrameStreamClient.
+// Use RequestExStream for stream-mode request handling.
 func (c *FrameStreamClient) Request(
 	ctx context.Context,
 	method string,
@@ -35,6 +40,8 @@ func (c *FrameStreamClient) Request(
 	return fmt.Errorf("frame stream client only supports RequestExStream")
 }
 
+// RequestExStream sends a streaming request over the frame protocol
+// and forwards each decoded StreamFrame to onResponse until the stream completes.
 func (c *FrameStreamClient) RequestExStream(
 	ctx context.Context,
 	method string,
@@ -104,6 +111,7 @@ func (c *FrameStreamClient) RequestExStream(
 	}
 }
 
+// buildFrameRPCRequest builds a JSON-RPC request payload for frame-based transport.
 func buildFrameRPCRequest(method string, params any) (*RPCRequest, error) {
 	var rawParams json.RawMessage
 	if params != nil {

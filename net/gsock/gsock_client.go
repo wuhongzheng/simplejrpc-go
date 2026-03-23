@@ -108,6 +108,12 @@ func (c *rpcClient) Request(ctx context.Context, method string, params, result a
 	return client.Request(ctx, method, params, result, opts...)
 }
 
+// RequestEx sends a request using the mode specified by the given header.
+//
+// Unary requests are executed through the legacy JSON-RPC Request path.
+// Stream requests are executed through the frame stream transport.
+//
+// The response callback receives a unified StreamFrame representation.
 func (c *rpcClient) RequestEx(
 	ctx context.Context,
 	method string,
@@ -131,6 +137,8 @@ func (c *rpcClient) RequestEx(
 	}
 }
 
+// requestExUnary executes RequestEx in unary mode by delegating to the legacy Request API
+// and converting the unary response payload into a single StreamFrame.
 func (c *rpcClient) requestExUnary(
 	ctx context.Context,
 	method string,
@@ -150,6 +158,8 @@ func (c *rpcClient) requestExUnary(
 	return nil
 }
 
+// requestExStream executes RequestEx in stream mode using the frame stream client
+// and forwards each received frame to the response handler.
 func (c *rpcClient) requestExStream(
 	ctx context.Context,
 	method string,
@@ -169,7 +179,11 @@ func (c *rpcClient) requestExStream(
 	return client.RequestExStream(ctx, method, params, onResponse, header)
 }
 
-// Header 归一化
+// normalizeHeader applies default protocol values and validates the request mode.
+//
+// Defaults:
+//   - Version: ProtocolVersion
+//   - Mode:    CallModeUnary
 func normalizeHeader(header Header) (Header, error) {
 	if header.Version == 0 {
 		header.Version = ProtocolVersion
@@ -186,7 +200,13 @@ func normalizeHeader(header Header) (Header, error) {
 	}
 }
 
-// 老 unary Response -> StreamFrame
+// mapUnaryResultToFrame converts a legacy unary response object into a unified StreamFrame.
+//
+// Missing fields fall back to standard unary defaults:
+//   - Code:   200
+//   - Msg:    "OK"
+//   - Stream: false
+//   - Done:   true
 func mapUnaryResultToFrame(raw map[string]any) StreamFrame {
 	frame := StreamFrame{
 		Code:   200,

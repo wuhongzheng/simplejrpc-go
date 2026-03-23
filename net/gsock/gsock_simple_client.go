@@ -37,6 +37,10 @@ func (c *JsonRpcSimpleClientHandler) Request(
 	return c.conn.Call(ctx, method, params, result, opts...)
 }
 
+// RequestEx is not executed directly by the legacy JSON-RPC client handler.
+//
+// The unified RequestEx entrypoint is expected to be handled by rpcClient,
+// which routes unary requests to Request and stream requests to the frame stream client.
 func (c *JsonRpcSimpleClientHandler) RequestEx(
 	ctx context.Context,
 	method string,

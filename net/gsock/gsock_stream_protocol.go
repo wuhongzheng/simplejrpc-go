@@ -32,6 +32,7 @@ type Header struct {
 	Length  uint32
 }
 
+// UnaryHeader returns a default protocol header configured for unary requests.
 func UnaryHeader() Header {
 	return Header{
 		Version: ProtocolVersion,
@@ -39,6 +40,7 @@ func UnaryHeader() Header {
 	}
 }
 
+// StreamHeader returns a default protocol header configured for streaming requests.
 func StreamHeader() Header {
 	return Header{
 		Version: ProtocolVersion,
@@ -66,6 +68,10 @@ type RPCError struct {
 	Message string `json:"message"`
 }
 
+// StreamFrame is the unified response envelope used by RequestEx.
+//
+// Unary requests produce a single frame with Stream=false and Done=true.
+// Stream requests produce one or more frames with Stream=true, ending with Done=true.
 type StreamFrame struct {
 	Code     int            `json:"code"`
 	Msg      string         `json:"msg"`

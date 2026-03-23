@@ -73,10 +73,14 @@ type IRpcClient interface {
 	//   - opts: Additional call options
 	Request(ctx context.Context, method string, params, result any, opts ...jsonrpc2.CallOption) error
 
-	// RequestEx routes requests by header mode.
-	// - header.Mode == CallModeUnary: reuse legacy Request and invoke onResponse once.
-	// - header.Mode == CallModeStream: use frame stream protocol and invoke onResponse multiple times.
-	// - when header.Mode == 0, unary is used by default.
+	// RequestEx sends an extended RPC request and dispatches responses through onResponse.
+	//
+	// Routing behavior is determined by header.Mode:
+	//   - CallModeUnary: reuses the legacy Request path and invokes onResponse once
+	//   - CallModeStream: uses the frame stream protocol and invokes onResponse multiple times
+	//
+	// If header.Mode is zero, unary mode is used by default.
+	// If onResponse returns an error, request processing stops immediately and that error is returned.
 	RequestEx(ctx context.Context, method string, params any, onResponse ResponseHandler, header Header) error
 }
 
