@@ -6,8 +6,6 @@ import (
 	"fmt"
 	"net"
 	"net/http"
-
-	"github.com/sourcegraph/jsonrpc2"
 )
 
 type FrameStreamClient struct {
@@ -29,24 +27,21 @@ func (c *FrameStreamClient) Request(
 	ctx context.Context,
 	method string,
 	params, result any,
-	opts ...jsonrpc2.CallOption,
 ) error {
 	_ = ctx
 	_ = method
 	_ = params
 	_ = result
-	_ = opts
-	return fmt.Errorf("frame stream client only supports RequestStream")
+	return fmt.Errorf("frame stream client only supports RequestExStream")
 }
 
-func (c *FrameStreamClient) RequestStream(
+func (c *FrameStreamClient) RequestExStream(
 	ctx context.Context,
 	method string,
 	params any,
-	onStream StreamHandler,
-	_ ...jsonrpc2.CallOption,
+	onResponse ResponseHandler,
+	header *Header,
 ) error {
-
 	req, err := buildFrameRPCRequest(method, params)
 	if err != nil {
 		return err
@@ -57,15 +52,24 @@ func (c *FrameStreamClient) RequestStream(
 		return err
 	}
 
+	h := StreamHeader()
+	if header != nil {
+		h = *header
+		if h.Version == 0 {
+			h.Version = ProtocolVersion
+		}
+		if h.Mode == 0 {
+			h.Mode = CallModeStream
+		}
+	}
+
 	if err := c.codec.WriteFrame(c.conn, &Frame{
-		Header: Header{
-			Version: ProtocolVersion,
-			Mode:    CallModeStream,
-		},
+		Header:  h,
 		Payload: body,
 	}); err != nil {
 		return err
 	}
+
 	for {
 		select {
 		case <-ctx.Done():
@@ -83,8 +87,10 @@ func (c *FrameStreamClient) RequestStream(
 			return err
 		}
 
-		if onStream != nil {
-			if err := onStream(streamFrame); err != nil {
+		streamFrame.Stream = true
+
+		if onResponse != nil {
+			if err := onResponse(streamFrame); err != nil {
 				return err
 			}
 		}

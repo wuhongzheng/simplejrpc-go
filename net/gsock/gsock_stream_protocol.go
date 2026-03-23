@@ -32,6 +32,20 @@ type Header struct {
 	Length  uint32
 }
 
+func UnaryHeader() Header {
+	return Header{
+		Version: ProtocolVersion,
+		Mode:    CallModeUnary,
+	}
+}
+
+func StreamHeader() Header {
+	return Header{
+		Version: ProtocolVersion,
+		Mode:    CallModeStream,
+	}
+}
+
 // Frame defines a gsock message
 type Frame struct {
 	Header  Header
@@ -56,12 +70,12 @@ type StreamFrame struct {
 	Code     int            `json:"code"`
 	Msg      string         `json:"msg"`
 	Stream   bool           `json:"stream"`
-	Data     any            `json:"data,omitempty"`
-	StreamID string         `json:"stream_id"`
-	Event    string         `json:"event"`
-	Seq      int            `json:"seq"`
+	Data     any            `json:"data"`
+	StreamID string         `json:"stream_id,omitempty"`
+	Event    string         `json:"event,omitempty"`
+	Seq      int            `json:"seq,omitempty"`
 	Done     bool           `json:"done"`
-	Meta     map[string]any `json:"meta,omitempty"`
+	Meta     map[string]any `json:"meta"`
 }
 
 // StreamResult defines a result for a streaming request

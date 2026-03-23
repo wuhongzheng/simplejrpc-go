@@ -2,6 +2,7 @@ package gsock
 
 import (
 	"context"
+	"fmt"
 	"net"
 
 	"github.com/sourcegraph/jsonrpc2"
@@ -107,12 +108,55 @@ func (c *rpcClient) Request(ctx context.Context, method string, params, result a
 	return client.Request(ctx, method, params, result, opts...)
 }
 
-func (c *rpcClient) RequestStream(
+func (c *rpcClient) RequestEx(
 	ctx context.Context,
 	method string,
 	params any,
-	onStream StreamHandler,
-	opts ...jsonrpc2.CallOption) error {
+	onResponse ResponseHandler,
+	header Header,
+	opts ...jsonrpc2.CallOption,
+) error {
+	normalizedHeader, err := normalizeHeader(header)
+	if err != nil {
+		return err
+	}
+
+	switch normalizedHeader.Mode {
+	case CallModeUnary:
+		return c.requestExUnary(ctx, method, params, onResponse)
+	case CallModeStream:
+		return c.requestExStream(ctx, method, params, onResponse, &normalizedHeader)
+	default:
+		return fmt.Errorf("unsupported request mode: %d", normalizedHeader.Mode)
+	}
+}
+
+func (c *rpcClient) requestExUnary(
+	ctx context.Context,
+	method string,
+	params any,
+	onResponse ResponseHandler,
+) error {
+	var raw map[string]any
+	if err := c.Request(ctx, method, params, &raw); err != nil {
+		return err
+	}
+
+	frame := mapUnaryResultToFrame(raw)
+
+	if onResponse != nil {
+		return onResponse(frame)
+	}
+	return nil
+}
+
+func (c *rpcClient) requestExStream(
+	ctx context.Context,
+	method string,
+	params any,
+	onResponse ResponseHandler,
+	header *Header,
+) error {
 	conn, err := net.Dial("unix", c.sockPath)
 	if err != nil {
 		return err
@@ -122,5 +166,52 @@ func (c *rpcClient) RequestStream(
 	}
 
 	client := NewFrameStreamClient(conn, c.streamCodec)
-	return client.RequestStream(ctx, method, params, onStream, opts...)
+	return client.RequestExStream(ctx, method, params, onResponse, header)
+}
+
+// Header 归一化
+func normalizeHeader(header Header) (Header, error) {
+	if header.Version == 0 {
+		header.Version = ProtocolVersion
+	}
+	if header.Mode == 0 {
+		header.Mode = CallModeUnary
+	}
+
+	switch header.Mode {
+	case CallModeUnary, CallModeStream:
+		return header, nil
+	default:
+		return header, fmt.Errorf("invalid header mode: %d", header.Mode)
+	}
+}
+
+// 老 unary Response -> StreamFrame
+func mapUnaryResultToFrame(raw map[string]any) StreamFrame {
+	frame := StreamFrame{
+		Code:   200,
+		Msg:    "OK",
+		Data:   nil,
+		Stream: false,
+		Done:   true,
+	}
+
+	if raw == nil {
+		return frame
+	}
+
+	if v, ok := raw["code"].(float64); ok {
+		frame.Code = int(v)
+	}
+	if v, ok := raw["msg"].(string); ok && v != "" {
+		frame.Msg = v
+	}
+	if v, ok := raw["data"]; ok {
+		frame.Data = v
+	}
+	if v, ok := raw["meta"].(map[string]any); ok {
+		frame.Meta = v
+	}
+
+	return frame
 }

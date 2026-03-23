@@ -37,19 +37,19 @@ func (c *JsonRpcSimpleClientHandler) Request(
 	return c.conn.Call(ctx, method, params, result, opts...)
 }
 
-func (c *JsonRpcSimpleClientHandler) RequestStream(
+func (c *JsonRpcSimpleClientHandler) RequestEx(
 	ctx context.Context,
 	method string,
 	params any,
-	onStream StreamHandler,
-	opts ...jsonrpc2.CallOption,
+	onResponse ResponseHandler,
+	header Header,
 ) error {
 	_ = ctx
 	_ = method
 	_ = params
-	_ = onStream
-	_ = opts
-	return errors.New("legacy jsonrpc client does not support RequestStream; use frame stream client")
+	_ = onResponse
+	_ = header
+	return errors.New("legacy jsonrpc client does not support RequestEx directly; use rpcClient")
 }
 
 // JsonRpcSimpleClient implements ClientAdapter for creating JSON-RPC 2.0 clients

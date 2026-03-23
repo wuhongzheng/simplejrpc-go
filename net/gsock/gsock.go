@@ -54,13 +54,13 @@ type IRpcService interface {
 	ServeFrameConn(ctx context.Context, conn net.Conn) error
 }
 
+type ResponseHandler func(frame StreamFrame) error
+
 // IRpcServiceHandle provides a simplified handler-only interface
 type IRpcServiceHandle interface {
 	IRpcHandler
 	Handle(req *Request) (any, error)
 }
-
-type StreamHandler func(msg StreamFrame) error
 
 // IRpcClient defines the client interface for making RPC calls
 type IRpcClient interface {
@@ -73,8 +73,11 @@ type IRpcClient interface {
 	//   - opts: Additional call options
 	Request(ctx context.Context, method string, params, result any, opts ...jsonrpc2.CallOption) error
 
-	// RequestStream add stream request client
-	RequestStream(ctx context.Context, method string, params any, onStream StreamHandler, opts ...jsonrpc2.CallOption) error
+	// RequestEx routes requests by header mode.
+	// - header.Mode == CallModeUnary: reuse legacy Request and invoke onResponse once.
+	// - header.Mode == CallModeStream: use frame stream protocol and invoke onResponse multiple times.
+	// - when header.Mode == 0, unary is used by default.
+	RequestEx(ctx context.Context, method string, params any, onResponse ResponseHandler, header Header) error
 }
 
 // ClientAdapter creates client connections for different protocols
