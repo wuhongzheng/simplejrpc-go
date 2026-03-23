@@ -245,12 +245,10 @@ func (r *JsonRpcSimpleService) Handle(
 	req *jsonrpc2.Request,
 ) (any, error) {
 	rawReq := &RawRequest{
-		// todo 检查当前JSONRPC如何取到
 		JSONRPC: "2.0",
 		Method:  req.Method,
 	}
 	if req.ID.Str != "" {
-		// todo 暂不增强
 	}
 	if req.ID.Num != 0 {
 		rawReq.ID = req.ID.Num
@@ -457,9 +455,10 @@ func (r *JsonRpcSimpleService) handleStreamResponse(req *Request, response any) 
 
 func (r *JsonRpcSimpleService) writeFrameUnaryResult(conn net.Conn, id uint64, result any) error {
 	frame := StreamFrame{
-		Code: http.StatusOK,
-		Msg:  "OK",
-		Done: true,
+		Code:   http.StatusOK,
+		Msg:    "OK",
+		Stream: false,
+		Done:   true,
 	}
 
 	if resp, ok := result.(*Response); ok {
@@ -492,10 +491,11 @@ func (r *JsonRpcSimpleService) writeFrameUnaryResult(conn net.Conn, id uint64, r
 
 func (r *JsonRpcSimpleService) writeFrameUnaryError(conn net.Conn, id uint64, code int, message string) error {
 	frame := StreamFrame{
-		Code: code,
-		Msg:  message,
-		Data: nil,
-		Done: true,
+		Code:   code,
+		Msg:    message,
+		Stream: false,
+		Data:   nil,
+		Done:   true,
 	}
 
 	body, err := json.Marshal(frame)

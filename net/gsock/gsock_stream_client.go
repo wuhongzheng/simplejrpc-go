@@ -94,6 +94,10 @@ func (c *FrameStreamClient) RequestWithFrame(
 			return err
 		}
 
+		if header != nil && header.Mode == CallModeUnary {
+			streamFrame.Stream = false
+		}
+
 		if onResponse != nil {
 			if err := onResponse(streamFrame); err != nil {
 				return err
