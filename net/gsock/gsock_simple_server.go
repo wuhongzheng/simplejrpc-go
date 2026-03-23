@@ -3,10 +3,12 @@ package gsock
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net"
 	"net/http"
+	"time"
 
 	"github.com/sourcegraph/jsonrpc2"
 
@@ -304,6 +306,7 @@ func (r *JsonRpcSimpleService) ServeFrameConn(ctx context.Context, conn net.Conn
 	}
 }
 
+// handleFrameRequest handles a single JSON-RPC request frame.
 func (r *JsonRpcSimpleService) handleFrameRequest(
 	ctx context.Context,
 	conn net.Conn,
@@ -355,6 +358,7 @@ func (r *JsonRpcSimpleService) handleFrameRequest(
 	return r.handleStreamResponse(request, response)
 }
 
+// handleStreamResponse handles a stream response.
 func (r *JsonRpcSimpleService) handleStreamResponse(req *Request, response any) error {
 	responder := req.Stream()
 	if responder == nil {
@@ -376,44 +380,52 @@ func (r *JsonRpcSimpleService) handleStreamResponse(req *Request, response any) 
 		return responder.Fail(http.StatusInternalServerError, err.Error())
 	}
 
-	switch v := out.(type) {
-	case *StreamResult:
+	streamTimeout := time.Duration(DefaultStreamHandleTimeout) * time.Second
+	streamCtx, cancel := context.WithTimeout(req.Context(), streamTimeout)
+	defer cancel()
+
+	runProducer := func(producer func(ctx context.Context, send func(event string, data any) error) error) error {
 		if err := responder.Start(map[string]any{
 			Endpoint: req.Method(),
 			Close:    0,
 		}); err != nil {
 			return err
 		}
-		if err := v.Producer(func(event string, data any) error {
-			return responder.Send(event, data)
-		}); err != nil {
+
+		err := producer(streamCtx, func(event string, data any) error {
+			select {
+			case <-streamCtx.Done():
+				return streamCtx.Err()
+			default:
+				return responder.Send(event, data)
+			}
+		})
+		if err != nil {
+			if errors.Is(err, context.DeadlineExceeded) {
+				return responder.Fail(http.StatusRequestTimeout, "stream request timeout")
+			}
+			if errors.Is(err, context.Canceled) {
+				return responder.Fail(http.StatusRequestTimeout, "stream request canceled")
+			}
 			return responder.Fail(http.StatusInternalServerError, err.Error())
 		}
+
 		return responder.End(map[string]any{
 			Endpoint: req.Method(),
 			Close:    1,
 		})
+	}
+
+	switch v := out.(type) {
+	case *StreamResult:
+		return runProducer(v.Producer)
 	case *Response:
 		if v.Code >= http.StatusBadRequest {
 			return responder.Fail(v.Code, v.Message)
 		}
 
 		if sr, ok := v.Data.(*StreamResult); ok && sr != nil {
-			if err := responder.Start(map[string]any{
-				Endpoint: req.Method(),
-				Close:    0,
-			}); err != nil {
-				return err
-			}
-			if err := sr.Producer(func(event string, data any) error {
-				return responder.Send(event, data)
-			}); err != nil {
-				return responder.Fail(http.StatusInternalServerError, err.Error())
-			}
-			return responder.End(map[string]any{
-				Endpoint: req.Method(),
-				Close:    1,
-			})
+			return runProducer(sr.Producer)
 		}
 
 		if err := responder.Start(map[string]any{

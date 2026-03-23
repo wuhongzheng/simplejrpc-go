@@ -1,6 +1,7 @@
 package gsock
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"sync/atomic"
@@ -81,16 +82,19 @@ type StreamFrame struct {
 	Event    string         `json:"event,omitempty"`
 	Seq      int            `json:"seq,omitempty"`
 	Done     bool           `json:"done"`
-	Meta     map[string]any `json:"meta"`
+	Meta     map[string]any `json:"meta,omitempty"`
 }
 
-// StreamResult defines a result for a streaming request
+// DefaultStreamHandleTimeout defines the default server-side timeout for a single stream request.
+const DefaultStreamHandleTimeout = 60
+
+// StreamResult defines a result for a streaming request.
 type StreamResult struct {
-	Producer func(send func(event string, data any) error) error
+	Producer func(ctx context.Context, send func(event string, data any) error) error
 }
 
-// Stream defines a streaming request
-func Stream(producer func(send func(event string, data any) error) error) *StreamResult {
+// Stream defines a streaming request.
+func Stream(producer func(ctx context.Context, send func(event string, data any) error) error) *StreamResult {
 	return &StreamResult{Producer: producer}
 }
 
