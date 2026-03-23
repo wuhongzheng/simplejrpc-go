@@ -24,7 +24,7 @@ type rpcClient struct {
 	keepLive    bool  // Connection persistence flag
 }
 
-// NewRpcKeepLivClient creates a new RPC client with connection persistence disabled.
+// NewRpcKeepLiveClient creates a new RPC client with connection persistence disabled.
 // Connections will remain open after requests (caller must manage cleanup).
 //
 // Parameters:
@@ -108,59 +108,21 @@ func (c *rpcClient) Request(ctx context.Context, method string, params, result a
 	return client.Request(ctx, method, params, result, opts...)
 }
 
-// RequestEx sends a request using the mode specified by the given header.
-//
-// Unary requests are executed through the legacy JSON-RPC Request path.
-// Stream requests are executed through the frame stream transport.
-//
-// The response callback receives a unified StreamFrame representation.
 func (c *rpcClient) RequestEx(
 	ctx context.Context,
 	method string,
 	params any,
 	onResponse ResponseHandler,
 	header Header,
-	opts ...jsonrpc2.CallOption,
 ) error {
 	normalizedHeader, err := normalizeHeader(header)
 	if err != nil {
 		return err
 	}
-
-	switch normalizedHeader.Mode {
-	case CallModeUnary:
-		return c.requestExUnary(ctx, method, params, onResponse)
-	case CallModeStream:
-		return c.requestExStream(ctx, method, params, onResponse, &normalizedHeader)
-	default:
-		return fmt.Errorf("unsupported request mode: %d", normalizedHeader.Mode)
-	}
+	return c.requestExFrame(ctx, method, params, onResponse, &normalizedHeader)
 }
 
-// requestExUnary executes RequestEx in unary mode by delegating to the legacy Request API
-// and converting the unary response payload into a single StreamFrame.
-func (c *rpcClient) requestExUnary(
-	ctx context.Context,
-	method string,
-	params any,
-	onResponse ResponseHandler,
-) error {
-	var raw map[string]any
-	if err := c.Request(ctx, method, params, &raw); err != nil {
-		return err
-	}
-
-	frame := mapUnaryResultToFrame(raw)
-
-	if onResponse != nil {
-		return onResponse(frame)
-	}
-	return nil
-}
-
-// requestExStream executes RequestEx in stream mode using the frame stream client
-// and forwards each received frame to the response handler.
-func (c *rpcClient) requestExStream(
+func (c *rpcClient) requestExFrame(
 	ctx context.Context,
 	method string,
 	params any,
@@ -176,7 +138,7 @@ func (c *rpcClient) requestExStream(
 	}
 
 	client := NewFrameStreamClient(conn, c.streamCodec)
-	return client.RequestExStream(ctx, method, params, onResponse, header)
+	return client.RequestWithFrame(ctx, method, params, onResponse, header)
 }
 
 // normalizeHeader applies default protocol values and validates the request mode.
@@ -198,40 +160,4 @@ func normalizeHeader(header Header) (Header, error) {
 	default:
 		return header, fmt.Errorf("invalid header mode: %d", header.Mode)
 	}
-}
-
-// mapUnaryResultToFrame converts a legacy unary response object into a unified StreamFrame.
-//
-// Missing fields fall back to standard unary defaults:
-//   - Code:   200
-//   - Msg:    "OK"
-//   - Stream: false
-//   - Done:   true
-func mapUnaryResultToFrame(raw map[string]any) StreamFrame {
-	frame := StreamFrame{
-		Code:   200,
-		Msg:    "OK",
-		Data:   nil,
-		Stream: false,
-		Done:   true,
-	}
-
-	if raw == nil {
-		return frame
-	}
-
-	if v, ok := raw["code"].(float64); ok {
-		frame.Code = int(v)
-	}
-	if v, ok := raw["msg"].(string); ok && v != "" {
-		frame.Msg = v
-	}
-	if v, ok := raw["data"]; ok {
-		frame.Data = v
-	}
-	if v, ok := raw["meta"].(map[string]any); ok {
-		frame.Meta = v
-	}
-
-	return frame
 }

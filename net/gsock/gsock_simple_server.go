@@ -456,7 +456,27 @@ func (r *JsonRpcSimpleService) handleStreamResponse(req *Request, response any) 
 }
 
 func (r *JsonRpcSimpleService) writeFrameUnaryResult(conn net.Conn, id uint64, result any) error {
-	body, err := json.Marshal(result)
+	frame := StreamFrame{
+		Code: http.StatusOK,
+		Msg:  "OK",
+		Done: true,
+	}
+
+	if resp, ok := result.(*Response); ok {
+		frame.Code = resp.Code
+		frame.Msg = resp.Message
+		frame.Data = resp.Data
+		if resp.Meta != nil {
+			frame.Meta = map[string]any{
+				"endpoint": resp.Meta.Endpoint,
+				"close":    resp.Meta.Close,
+			}
+		}
+	} else {
+		frame.Data = result
+	}
+
+	body, err := json.Marshal(frame)
 	if err != nil {
 		return err
 	}
@@ -471,12 +491,14 @@ func (r *JsonRpcSimpleService) writeFrameUnaryResult(conn net.Conn, id uint64, r
 }
 
 func (r *JsonRpcSimpleService) writeFrameUnaryError(conn net.Conn, id uint64, code int, message string) error {
-	resp := NewResponse()
-	resp.Code = code
-	resp.Message = message
-	resp.Data = nil
+	frame := StreamFrame{
+		Code: code,
+		Msg:  message,
+		Data: nil,
+		Done: true,
+	}
 
-	body, err := json.Marshal(resp)
+	body, err := json.Marshal(frame)
 	if err != nil {
 		return err
 	}

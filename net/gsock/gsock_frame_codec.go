@@ -7,6 +7,12 @@ import (
 	"net"
 )
 
+const (
+	// MaxFramePayloadSize defines the maximum allowed size for a single frame payload (10MB)
+	// This limit protects the server from OOM attacks by malicious clients
+	MaxFramePayloadSize = 10 * 1024 * 1024
+)
+
 // FrameCodec defines the interface for encoding and decoding frames.
 type FrameCodec interface {
 	// ReadFrame reads a frame from the connection.
@@ -34,6 +40,10 @@ func (c *LengthFrameCodec) ReadFrame(conn net.Conn) (*Frame, error) {
 
 	if header.Length == 0 {
 		return nil, errors.New("empty payload")
+	}
+
+	if header.Length > MaxFramePayloadSize {
+		return nil, errors.New("payload too large")
 	}
 
 	body := make([]byte, header.Length)

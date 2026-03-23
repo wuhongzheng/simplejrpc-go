@@ -27,7 +27,7 @@ func NewFrameStreamClient(conn net.Conn, codec FrameCodec) *FrameStreamClient {
 }
 
 // Request is unsupported for FrameStreamClient.
-// Use RequestExStream for stream-mode request handling.
+// Use RequestWithFrame for frame-mode request handling.
 func (c *FrameStreamClient) Request(
 	ctx context.Context,
 	method string,
@@ -40,9 +40,9 @@ func (c *FrameStreamClient) Request(
 	return fmt.Errorf("frame stream client only supports RequestExStream")
 }
 
-// RequestExStream sends a streaming request over the frame protocol
+// RequestWithFrame sends a request over the frame protocol
 // and forwards each decoded StreamFrame to onResponse until the stream completes.
-func (c *FrameStreamClient) RequestExStream(
+func (c *FrameStreamClient) RequestWithFrame(
 	ctx context.Context,
 	method string,
 	params any,
@@ -93,8 +93,6 @@ func (c *FrameStreamClient) RequestExStream(
 		if err := json.Unmarshal(frame.Payload, &streamFrame); err != nil {
 			return err
 		}
-
-		streamFrame.Stream = true
 
 		if onResponse != nil {
 			if err := onResponse(streamFrame); err != nil {
