@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"time"
 )
 
 // FrameStreamClient implements frame-based streaming request handling.
@@ -49,6 +50,14 @@ func (c *FrameStreamClient) RequestWithFrame(
 	onResponse ResponseHandler,
 	header *Header,
 ) error {
+	// check header
+	if header == nil {
+		return fmt.Errorf("stream error: code=%d msg=%s", http.StatusBadRequest, "missing request header")
+	}
+	if header.Mode != CallModeUnary && header.Mode != CallModeStream {
+		return fmt.Errorf("stream error: code=%d msg=%s", http.StatusBadRequest, "invalid request mode")
+	}
+
 	req, err := buildFrameRPCRequest(method, params)
 	if err != nil {
 		return err
@@ -59,14 +68,6 @@ func (c *FrameStreamClient) RequestWithFrame(
 		return err
 	}
 
-	// check header
-	if header == nil {
-		return fmt.Errorf("stream error: code=%d msg=%s", http.StatusBadRequest, "missing request header")
-	}
-	if header.Mode != CallModeUnary && header.Mode != CallModeStream {
-		return fmt.Errorf("stream error: code=%d msg=%s", http.StatusBadRequest, "invalid request mode")
-	}
-
 	// write frame
 	if err := c.codec.WriteFrame(c.conn, &Frame{
 		Header:  *header,
@@ -74,6 +75,20 @@ func (c *FrameStreamClient) RequestWithFrame(
 	}); err != nil {
 		return err
 	}
+
+	// undefine read deadline
+	if dl, ok := ctx.Deadline(); ok {
+		if err := c.conn.SetReadDeadline(dl); err != nil {
+			return err
+		}
+	}
+
+	// reset read deadline
+	defer func(conn net.Conn, t time.Time) {
+		err := conn.SetReadDeadline(t)
+		if err != nil {
+		}
+	}(c.conn, time.Time{})
 
 	for {
 		// check context status
@@ -85,6 +100,11 @@ func (c *FrameStreamClient) RequestWithFrame(
 
 		frame, err := c.codec.ReadFrame(c.conn)
 		if err != nil {
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			default:
+			}
 			return err
 		}
 

@@ -290,7 +290,9 @@ func (r *JsonRpcSimpleService) ServeFrameConn(ctx context.Context, conn net.Conn
 
 		var req RPCRequest
 		if err := json.Unmarshal(frame.Payload, &req); err != nil {
-			_ = r.writeFrameUnaryError(conn, 0, http.StatusBadRequest, "parse error")
+			if err := r.writeFrameUnaryError(conn, 0, http.StatusBadRequest, "parse error"); err != nil {
+				return err
+			}
 			continue
 		}
 		if req.JSONRPC == "" {
@@ -299,7 +301,9 @@ func (r *JsonRpcSimpleService) ServeFrameConn(ctx context.Context, conn net.Conn
 
 		if err := r.handleFrameRequest(ctx, conn, frame.Header, &req); err != nil {
 			if frame.Header.Mode == CallModeUnary {
-				_ = r.writeFrameUnaryError(conn, req.ID, http.StatusInternalServerError, err.Error())
+				if err := r.writeFrameUnaryError(conn, req.ID, http.StatusInternalServerError, err.Error()); err != nil {
+					return err
+				}
 			}
 		}
 	}
@@ -401,6 +405,9 @@ func (r *JsonRpcSimpleService) handleStreamResponse(req *Request, response any) 
 			}
 		})
 		if err != nil {
+			if errors.Is(err, io.EOF) {
+				return nil
+			}
 			if errors.Is(err, context.DeadlineExceeded) {
 				return responder.Fail(http.StatusRequestTimeout, "stream request timeout")
 			}

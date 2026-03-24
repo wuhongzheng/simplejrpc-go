@@ -94,11 +94,15 @@ func (s *rpcServer) StartServer(socketPath string) error {
 			// defer conn.Close()
 			pc := newPeekConn(conn)
 
-			//Set the timeout for peek to 5 seconds
-			_ = conn.SetReadDeadline(time.Now().Add(time.Second * 5))
+			//If the pre-settings fail, just close them directly
+			if err := conn.SetReadDeadline(time.Now().Add(time.Second * 5)); err != nil {
+				return
+			}
 			peek, err := pc.Peek(1)
-			// After peek ends, cancel the timeout
-			_ = conn.SetReadDeadline(time.Time{})
+			// If the post-setting fails, the connection must be closed
+			if err := conn.SetReadDeadline(time.Time{}); err != nil {
+				return
+			}
 
 			if err == nil && len(peek) == 1 && peek[0] == ProtocolVersion {
 				if err := s.service.ServeFrameConn(ctx, pc); err != nil {
