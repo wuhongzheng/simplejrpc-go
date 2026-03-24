@@ -5,7 +5,7 @@ import "net/http"
 // Meta contains WebSocket metadata for message handling
 type Meta struct {
 	Endpoint string `json:"endpoint"` // The API endpoint/path this response corresponds to
-	Close    int    `json:"close"`    // Flag indicating if connection should close (0=keep open, 1=close)
+	Close    int    `json:"close"`    // Flag indicating if connection should close (ConnStatusKeepAlive=keep open, ConnStatusClose=close)
 }
 
 // Response represents a standardized WebSocket response format
@@ -37,8 +37,8 @@ func (r *Response) SetEndpoint(endpoint string) {
 // SetClose controls the WebSocket connection close behavior
 // Values:
 //
-//	0 - Keep connection open (default)
-//	1 - Close connection after this message
+//	ConnStatusKeepAlive - Keep connection open (default)
+//	ConnStatusClose - Close connection after this message
 func (r *Response) SetClose(close int) {
 	r.Meta.Close = close
 }

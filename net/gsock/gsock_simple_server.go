@@ -245,7 +245,7 @@ func (r *JsonRpcSimpleService) Handle(
 	req *jsonrpc2.Request,
 ) (any, error) {
 	rawReq := &RawRequest{
-		JSONRPC: "2.0",
+		JSONRPC: JSONRPCVersion,
 		Method:  req.Method,
 	}
 	if req.ID.Str != "" {
@@ -296,7 +296,7 @@ func (r *JsonRpcSimpleService) ServeFrameConn(ctx context.Context, conn net.Conn
 			continue
 		}
 		if req.JSONRPC == "" {
-			req.JSONRPC = "2.0"
+			req.JSONRPC = JSONRPCVersion
 		}
 
 		if err := r.handleFrameRequest(ctx, conn, frame.Header, &req); err != nil {
@@ -373,7 +373,7 @@ func (r *JsonRpcSimpleService) handleStreamResponse(req *Request, response any) 
 		if !responder.Ended() {
 			return responder.End(map[string]any{
 				Endpoint: req.Method(),
-				Close:    1,
+				Close:    ConnStatusClose,
 			})
 		}
 		return nil
@@ -391,7 +391,7 @@ func (r *JsonRpcSimpleService) handleStreamResponse(req *Request, response any) 
 	runProducer := func(producer func(ctx context.Context, send func(event string, data any) error) error) error {
 		if err := responder.Start(map[string]any{
 			Endpoint: req.Method(),
-			Close:    0,
+			Close:    ConnStatusKeepAlive,
 		}); err != nil {
 			return err
 		}
@@ -417,10 +417,13 @@ func (r *JsonRpcSimpleService) handleStreamResponse(req *Request, response any) 
 			return responder.Fail(http.StatusInternalServerError, err.Error())
 		}
 
-		return responder.End(map[string]any{
+		if err := responder.End(map[string]any{
 			Endpoint: req.Method(),
-			Close:    1,
-		})
+			Close:    ConnStatusClose,
+		}); err != nil {
+			return err
+		}
+		return nil
 	}
 
 	switch v := out.(type) {
@@ -437,7 +440,7 @@ func (r *JsonRpcSimpleService) handleStreamResponse(req *Request, response any) 
 
 		if err := responder.Start(map[string]any{
 			Endpoint: req.Method(),
-			Close:    0,
+			Close:    ConnStatusKeepAlive,
 		}); err != nil {
 			return err
 		}
@@ -446,18 +449,18 @@ func (r *JsonRpcSimpleService) handleStreamResponse(req *Request, response any) 
 		}
 		return responder.End(map[string]any{
 			Endpoint: req.Method(),
-			Close:    1,
+			Close:    ConnStatusClose,
 		})
 	default:
 		if err := responder.Start(map[string]any{
 			Endpoint: req.Method(),
-			Close:    0,
+			Close:    ConnStatusKeepAlive,
 		}); err != nil {
 			return err
 		}
 		return responder.End(map[string]any{
 			Endpoint: req.Method(),
-			Close:    1,
+			Close:    ConnStatusClose,
 		})
 	}
 }

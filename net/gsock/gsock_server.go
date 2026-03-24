@@ -95,7 +95,7 @@ func (s *rpcServer) StartServer(socketPath string) error {
 			pc := newPeekConn(conn)
 
 			//If the pre-settings fail, just close them directly
-			if err := conn.SetReadDeadline(time.Now().Add(time.Second * 5)); err != nil {
+			if err := conn.SetReadDeadline(time.Now().Add(time.Duration(DefaultReadTimeout) * time.Second)); err != nil {
 				return
 			}
 			peek, err := pc.Peek(1)

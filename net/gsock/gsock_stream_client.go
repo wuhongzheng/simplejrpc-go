@@ -145,7 +145,7 @@ func buildFrameRPCRequest(method string, params any) (*RPCRequest, error) {
 	}
 
 	return &RPCRequest{
-		JSONRPC: "2.0",
+		JSONRPC: JSONRPCVersion,
 		ID:      nextRequestID(),
 		Method:  method,
 		Params:  rawParams,

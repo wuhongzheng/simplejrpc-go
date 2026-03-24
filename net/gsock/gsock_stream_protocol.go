@@ -10,7 +10,8 @@ import (
 )
 
 const (
-	ProtocolVersion uint8 = 1
+	ProtocolVersion uint8  = 1
+	JSONRPCVersion  string = "2.0"
 )
 
 type CallMode uint8
@@ -18,6 +19,11 @@ type CallMode uint8
 const (
 	CallModeUnary  CallMode = 1
 	CallModeStream CallMode = 2
+)
+
+const (
+	ConnStatusKeepAlive = 0
+	ConnStatusClose     = 1
 )
 
 const (
@@ -89,6 +95,9 @@ type StreamFrame struct {
 
 // DefaultStreamHandleTimeout defines the default server-side timeout for a single stream request.
 const DefaultStreamHandleTimeout = 60
+
+// DefaultReadTimeout defines the default timeout for reading from a connection (e.g. during protocol detection).
+const DefaultReadTimeout = 5
 
 // StreamResult defines a result for a streaming request.
 type StreamResult struct {
