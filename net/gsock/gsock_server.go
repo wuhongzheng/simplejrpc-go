@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 )
 
 // RpcServerOptFunc defines functions for configuring an RPC server
@@ -93,10 +94,12 @@ func (s *rpcServer) StartServer(socketPath string) error {
 			// defer conn.Close()
 			pc := newPeekConn(conn)
 
-			// peek new protocol：
-			// 新 frame 协议第一个字节固定为 ProtocolVersion(1)
-			// 老 VSCodeObjectCodec 一般以 'C' 开头（Content-Length: ...）
+			//Set the timeout for peek to 5 seconds
+			_ = conn.SetReadDeadline(time.Now().Add(time.Second * 5))
 			peek, err := pc.Peek(1)
+			// After peek ends, cancel the timeout
+			_ = conn.SetReadDeadline(time.Time{})
+
 			if err == nil && len(peek) == 1 && peek[0] == ProtocolVersion {
 				if err := s.service.ServeFrameConn(ctx, pc); err != nil {
 					log.Printf("serve frame connect failed: %v", err)

@@ -102,7 +102,6 @@ func Stream(producer func(ctx context.Context, send func(event string, data any)
 
 var (
 	globalRequestID uint64
-	globalStreamID  uint64
 )
 
 // nextRequestID returns the next request ID

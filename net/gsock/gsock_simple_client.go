@@ -62,7 +62,7 @@ type JsonRpcSimpleClient struct{}
 // NewConn establishes a new JSON-RPC 2.0 client connection
 // Implements the ClientAdapter interface
 func (r *JsonRpcSimpleClient) NewConn(ctx context.Context, conn net.Conn) IRpcClient {
-	// Create buffered connection with VSCode-style message codec
+	// Create buffered connection with VSCode-style message frameCodec
 	jsonConn := jsonrpc2.NewConn(
 		ctx,
 		jsonrpc2.NewBufferedStream(conn, jsonrpc2.VSCodeObjectCodec{}),

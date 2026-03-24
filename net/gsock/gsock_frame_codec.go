@@ -73,6 +73,7 @@ func (c *LengthFrameCodec) WriteFrame(conn net.Conn, frame *Frame) error {
 	return writeFull(conn, frame.Payload)
 }
 
+// writeFull impl
 func writeFull(conn net.Conn, b []byte) error {
 	for len(b) > 0 {
 		n, err := conn.Write(b)

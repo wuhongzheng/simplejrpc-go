@@ -14,9 +14,9 @@ type FrameStreamClient struct {
 	codec FrameCodec
 }
 
-// NewFrameStreamClient creates a frame stream client with the provided connection and codec.
-// If codec is nil, LengthFrameCodec is used by default.
-func NewFrameStreamClient(conn net.Conn, codec FrameCodec) *FrameStreamClient {
+// NewFrameClient creates a frame stream client with the provided connection and frameCodec.
+// If frameCodec is nil, LengthFrameCodec is used by default.
+func NewFrameClient(conn net.Conn, codec FrameCodec) *FrameStreamClient {
 	if codec == nil {
 		codec = &LengthFrameCodec{}
 	}
@@ -59,25 +59,24 @@ func (c *FrameStreamClient) RequestWithFrame(
 		return err
 	}
 
-	h := StreamHeader()
-	if header != nil {
-		h = *header
-		if h.Version == 0 {
-			h.Version = ProtocolVersion
-		}
-		if h.Mode == 0 {
-			h.Mode = CallModeStream
-		}
+	// check header
+	if header == nil {
+		return fmt.Errorf("stream error: code=%d msg=%s", http.StatusBadRequest, "missing request header")
+	}
+	if header.Mode != CallModeUnary && header.Mode != CallModeStream {
+		return fmt.Errorf("stream error: code=%d msg=%s", http.StatusBadRequest, "invalid request mode")
 	}
 
+	// write frame
 	if err := c.codec.WriteFrame(c.conn, &Frame{
-		Header:  h,
+		Header:  *header,
 		Payload: body,
 	}); err != nil {
 		return err
 	}
 
 	for {
+		// check context status
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
@@ -98,6 +97,7 @@ func (c *FrameStreamClient) RequestWithFrame(
 			streamFrame.Stream = false
 		}
 
+		// Process the response of the data through the registered function
 		if onResponse != nil {
 			if err := onResponse(streamFrame); err != nil {
 				return err

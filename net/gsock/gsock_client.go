@@ -17,11 +17,11 @@ import (
 //   - idCounter: Atomic counter for generating unique request IDs
 //   - keepLive:  Flag controlling whether connections should be kept alive after requests
 type rpcClient struct {
-	sockPath    string        // Path to the Unix domain socket
-	adapter     ClientAdapter // Protocol adapter (defaults to JSON-RPC)
-	streamCodec FrameCodec
-	idCounter   int64 // Atomic counter for generating request IDs
-	keepLive    bool  // Connection persistence flag
+	sockPath   string        // Path to the Unix domain socket
+	adapter    ClientAdapter // Protocol adapter (defaults to JSON-RPC)
+	frameCodec FrameCodec    // Frame frameCodec
+	idCounter  int64         // Atomic counter for generating request IDs
+	keepLive   bool          // Connection persistence flag
 }
 
 // NewRpcKeepLiveClient creates a new RPC client with connection persistence disabled.
@@ -38,9 +38,9 @@ type rpcClient struct {
 //	Uses JsonRpcSimpleClient as the default adapter
 func NewRpcSimpleClient(socketPath string) *rpcClient {
 	return &rpcClient{
-		sockPath:    socketPath,
-		adapter:     &JsonRpcSimpleClient{},
-		streamCodec: &LengthFrameCodec{},
+		sockPath:   socketPath,
+		adapter:    &JsonRpcSimpleClient{},
+		frameCodec: &LengthFrameCodec{},
 	}
 }
 
@@ -58,10 +58,10 @@ func NewRpcSimpleClient(socketPath string) *rpcClient {
 //	Uses JsonRpcSimpleClient as the default adapter
 func NewRpcKeepLiveClient(socketPath string) *rpcClient {
 	return &rpcClient{
-		sockPath:    socketPath,
-		adapter:     &JsonRpcSimpleClient{},
-		streamCodec: &LengthFrameCodec{},
-		keepLive:    true,
+		sockPath:   socketPath,
+		adapter:    &JsonRpcSimpleClient{},
+		frameCodec: &LengthFrameCodec{},
+		keepLive:   true,
 	}
 }
 
@@ -108,6 +108,17 @@ func (c *rpcClient) Request(ctx context.Context, method string, params, result a
 	return client.Request(ctx, method, params, result, opts...)
 }
 
+// RequestEx Extend support for stream through custom protocols
+//
+// Parameters:
+//   - ctx:       Context for cancellation and timeout control
+//   - method:    RPC method name to invoke
+//   - params:    Input parameters
+//   - onResponse ResponseHandler for handling streaming responses
+//   - header:    Custom request header
+//
+// Returns:
+//   - error:     nil on success, or error describing failure:
 func (c *rpcClient) RequestEx(
 	ctx context.Context,
 	method string,
@@ -122,6 +133,7 @@ func (c *rpcClient) RequestEx(
 	return c.requestExFrame(ctx, method, params, onResponse, &normalizedHeader)
 }
 
+// requestExFrame handles the actual request processing for RequestEx.
 func (c *rpcClient) requestExFrame(
 	ctx context.Context,
 	method string,
@@ -137,7 +149,7 @@ func (c *rpcClient) requestExFrame(
 		defer conn.Close()
 	}
 
-	client := NewFrameStreamClient(conn, c.streamCodec)
+	client := NewFrameClient(conn, c.frameCodec)
 	return client.RequestWithFrame(ctx, method, params, onResponse, header)
 }
 
@@ -145,7 +157,7 @@ func (c *rpcClient) requestExFrame(
 //
 // Defaults:
 //   - Version: ProtocolVersion
-//   - Mode:    CallModeUnary
+//   - Mode:    CallModeUnary (default)
 func normalizeHeader(header Header) (Header, error) {
 	if header.Version == 0 {
 		header.Version = ProtocolVersion

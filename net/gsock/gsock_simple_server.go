@@ -186,7 +186,7 @@ func NewJsonRpcSimpleService(opts ...JsonRpcSimpleServiceOptionFunc) *JsonRpcSim
 	return rpc
 }
 
-// NewConn creates a new JSON-RPC 2.0 connection with context and codec support.
+// NewConn creates a new JSON-RPC 2.0 connection with context and frameCodec support.
 // ctx: Context for the connection
 // conn: Underlying network connection
 // Returns: New JSON-RPC 2.0 connection
@@ -283,6 +283,7 @@ func (r *JsonRpcSimpleService) ServeFrameConn(ctx context.Context, conn net.Conn
 			return err
 		}
 
+		// If the mode is not set for detection, it defaults to unary
 		if frame.Header.Mode == 0 {
 			frame.Header.Mode = CallModeUnary
 		}
@@ -363,6 +364,7 @@ func (r *JsonRpcSimpleService) handleStreamResponse(req *Request, response any) 
 		return fmt.Errorf("stream responder is nil")
 	}
 
+	// pre-check, If it has been used before, force the setting to send end
 	if responder.Used() {
 		if !responder.Ended() {
 			return responder.End(map[string]any{
@@ -453,6 +455,7 @@ func (r *JsonRpcSimpleService) handleStreamResponse(req *Request, response any) 
 	}
 }
 
+// writeFrameUnaryResult writes a unary response frame to the connection.
 func (r *JsonRpcSimpleService) writeFrameUnaryResult(conn net.Conn, id uint64, result any) error {
 	frame := StreamFrame{
 		Code:   http.StatusOK,
