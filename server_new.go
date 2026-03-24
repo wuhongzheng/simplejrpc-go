@@ -19,7 +19,7 @@ func NewDefaultServer(opts ...gsock.JsonRpcSimpleServiceOptionFunc) *Server {
 	// Create a new RPC server with a JSON-RPC simple service as the underlying implementation
 	service := gsock.NewRpcServer(
 		gsock.WithServiceOptFunc(
-			gsock.NewJsonRpcSimpleService(opts...),
+			gsock.NewJsonRpcService(opts...),
 		),
 	)
 	return &Server{

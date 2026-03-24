@@ -165,10 +165,10 @@ func WithJsonRpcSimpleServiceCodec(codec FrameCodec) JsonRpcSimpleServiceOptionF
 	}
 }
 
-// NewJsonRpcSimpleService creates a new service instance with custom configuration.
+// NewJsonRpcService creates a new service instance with custom configuration.
 // opts: Optional configuration functions
 // Returns: Configured service instance
-func NewJsonRpcSimpleService(opts ...JsonRpcSimpleServiceOptionFunc) *JsonRpcSimpleService {
+func NewJsonRpcService(opts ...JsonRpcSimpleServiceOptionFunc) *JsonRpcSimpleService {
 	rpc := &JsonRpcSimpleService{
 		handler:     NewJsonRpcSimpleServiceHandler(),
 		middlewares: make([]RPCMiddleware, 0),
