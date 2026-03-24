@@ -3,8 +3,10 @@ package gsock
 import (
 	"context"
 	"encoding/json"
-	"fmt"
+	"strings"
 	"sync/atomic"
+
+	"github.com/google/uuid"
 )
 
 const (
@@ -110,6 +112,6 @@ func nextRequestID() uint64 {
 
 // nextStreamID returns the next stream ID
 func nextStreamID() string {
-	v := atomic.AddUint64(&globalStreamID, 1)
-	return fmt.Sprintf("stream-%d", v)
+	rawUuid := uuid.NewString()
+	return strings.ReplaceAll(rawUuid, "-", "")
 }
