@@ -121,10 +121,10 @@ func (h *JsonRpcSimpleServiceHandler) Handle(req *Request) (any, error) {
 }
 
 // JsonRpcSimpleServiceOptionFunc defines the signature for service configuration functions.
-type JsonRpcSimpleServiceOptionFunc func(*JsonRpcSimpleService)
+type JsonRpcSimpleServiceOptionFunc func(*JsonRpcleService)
 
-// JsonRpcSimpleService implements IRpcService for handling JSON-RPC 2.0 protocol.
-type JsonRpcSimpleService struct {
+// JsonRpcleService implements IRpcService for handling JSON-RPC 2.0 protocol.
+type JsonRpcleService struct {
 	handler     IRpcServiceHandle // Core request handler implementation
 	middlewares []RPCMiddleware   // Service-level middleware chain
 	codec       FrameCodec
@@ -133,8 +133,8 @@ type JsonRpcSimpleService struct {
 // NewDefaultJsonRpcSimpleService creates a service instance with default configuration.
 // hand: The handler implementation to use
 // Returns: New service instance
-func NewDefaultJsonRpcSimpleService(handler IRpcServiceHandle) *JsonRpcSimpleService {
-	return &JsonRpcSimpleService{
+func NewDefaultJsonRpcSimpleService(handler IRpcServiceHandle) *JsonRpcleService {
+	return &JsonRpcleService{
 		handler:     handler,
 		middlewares: make([]RPCMiddleware, 0),
 		codec:       &LengthFrameCodec{},
@@ -145,7 +145,7 @@ func NewDefaultJsonRpcSimpleService(handler IRpcServiceHandle) *JsonRpcSimpleSer
 // hand: The handler implementation to configure
 // Returns: Configuration function
 func WithJsonRpcSimpleServiceHandler(hand IRpcServiceHandle) JsonRpcSimpleServiceOptionFunc {
-	return func(s *JsonRpcSimpleService) {
+	return func(s *JsonRpcleService) {
 		s.handler = hand
 	}
 }
@@ -154,13 +154,13 @@ func WithJsonRpcSimpleServiceHandler(hand IRpcServiceHandle) JsonRpcSimpleServic
 // middlewares: Middleware chain to configure
 // Returns: Configuration function
 func WithJsonRpcSimpleServiceMiddlewares(middlewares ...RPCMiddleware) JsonRpcSimpleServiceOptionFunc {
-	return func(s *JsonRpcSimpleService) {
+	return func(s *JsonRpcleService) {
 		s.middlewares = append(s.middlewares, middlewares...)
 	}
 }
 
 func WithJsonRpcSimpleServiceCodec(codec FrameCodec) JsonRpcSimpleServiceOptionFunc {
-	return func(s *JsonRpcSimpleService) {
+	return func(s *JsonRpcleService) {
 		s.codec = codec
 	}
 }
@@ -168,8 +168,8 @@ func WithJsonRpcSimpleServiceCodec(codec FrameCodec) JsonRpcSimpleServiceOptionF
 // NewJsonRpcService creates a new service instance with custom configuration.
 // opts: Optional configuration functions
 // Returns: Configured service instance
-func NewJsonRpcService(opts ...JsonRpcSimpleServiceOptionFunc) *JsonRpcSimpleService {
-	rpc := &JsonRpcSimpleService{
+func NewJsonRpcService(opts ...JsonRpcSimpleServiceOptionFunc) *JsonRpcleService {
+	rpc := &JsonRpcleService{
 		handler:     NewJsonRpcSimpleServiceHandler(),
 		middlewares: make([]RPCMiddleware, 0),
 		codec:       &LengthFrameCodec{},
@@ -190,7 +190,7 @@ func NewJsonRpcService(opts ...JsonRpcSimpleServiceOptionFunc) *JsonRpcSimpleSer
 // ctx: Context for the connection
 // conn: Underlying network connection
 // Returns: New JSON-RPC 2.0 connection
-func (r *JsonRpcSimpleService) NewConn(ctx context.Context, conn net.Conn) *jsonrpc2.Conn {
+func (r *JsonRpcleService) NewConn(ctx context.Context, conn net.Conn) *jsonrpc2.Conn {
 	return jsonrpc2.NewConn(
 		ctx,
 		jsonrpc2.NewBufferedStream(conn, jsonrpc2.VSCodeObjectCodec{}),
@@ -200,7 +200,7 @@ func (r *JsonRpcSimpleService) NewConn(ctx context.Context, conn net.Conn) *json
 
 // ProcessRequest executes the service-level request middleware chain.
 // req: Request object to process
-func (r *JsonRpcSimpleService) ProcessRequest(req *Request) {
+func (r *JsonRpcleService) ProcessRequest(req *Request) {
 	for _, middleware := range r.middlewares {
 		middleware.ProcessRequest(req)
 	}
@@ -210,7 +210,7 @@ func (r *JsonRpcSimpleService) ProcessRequest(req *Request) {
 // api: Method name to register
 // hand: Handler function to execute
 // middlewares: Optional middleware for this handler
-func (r *JsonRpcSimpleService) RegisterHandle(
+func (r *JsonRpcleService) RegisterHandle(
 	api string,
 	hand func(req *Request) (any, error),
 	middlewares ...RPCMiddleware,
@@ -221,7 +221,7 @@ func (r *JsonRpcSimpleService) RegisterHandle(
 // ProcessResponse executes the service-level response middleware chain in reverse order.
 // rep: Response object to process
 // Returns: Processed response or error if middleware fails
-func (r *JsonRpcSimpleService) ProcessResponse(rep any) (any, error) {
+func (r *JsonRpcleService) ProcessResponse(rep any) (any, error) {
 	out := rep
 	array := garray.NewArray[RPCMiddleware](r.middlewares)
 	for _, middleware := range array.Reverse() {
@@ -239,7 +239,7 @@ func (r *JsonRpcSimpleService) ProcessResponse(rep any) (any, error) {
 // conn: JSON-RPC connection
 // req: Incoming request
 // Returns: Response object or error if processing fails
-func (r *JsonRpcSimpleService) Handle(
+func (r *JsonRpcleService) Handle(
 	ctx context.Context,
 	conn *jsonrpc2.Conn,
 	req *jsonrpc2.Request,
@@ -273,7 +273,7 @@ func (r *JsonRpcSimpleService) Handle(
 	return r.ProcessResponse(response)
 }
 
-func (r *JsonRpcSimpleService) ServeFrameConn(ctx context.Context, conn net.Conn) error {
+func (r *JsonRpcleService) ServeFrameConn(ctx context.Context, conn net.Conn) error {
 	for {
 		frame, err := r.codec.ReadFrame(conn)
 		if err != nil {
@@ -310,7 +310,7 @@ func (r *JsonRpcSimpleService) ServeFrameConn(ctx context.Context, conn net.Conn
 }
 
 // handleFrameRequest handles a single JSON-RPC request frame.
-func (r *JsonRpcSimpleService) handleFrameRequest(
+func (r *JsonRpcleService) handleFrameRequest(
 	ctx context.Context,
 	conn net.Conn,
 	header Header,
@@ -362,7 +362,7 @@ func (r *JsonRpcSimpleService) handleFrameRequest(
 }
 
 // handleStreamResponse handles a stream response.
-func (r *JsonRpcSimpleService) handleStreamResponse(req *Request, response any) error {
+func (r *JsonRpcleService) handleStreamResponse(req *Request, response any) error {
 	responder := req.Stream()
 	if responder == nil {
 		return fmt.Errorf("stream responder is nil")
@@ -466,7 +466,7 @@ func (r *JsonRpcSimpleService) handleStreamResponse(req *Request, response any) 
 }
 
 // writeFrameUnaryResult writes a unary response frame to the connection.
-func (r *JsonRpcSimpleService) writeFrameUnaryResult(conn net.Conn, id uint64, result any) error {
+func (r *JsonRpcleService) writeFrameUnaryResult(conn net.Conn, id uint64, result any) error {
 	frame := StreamFrame{
 		Code:   http.StatusOK,
 		Msg:    "OK",
@@ -502,7 +502,7 @@ func (r *JsonRpcSimpleService) writeFrameUnaryResult(conn net.Conn, id uint64, r
 	})
 }
 
-func (r *JsonRpcSimpleService) writeFrameUnaryError(conn net.Conn, id uint64, code int, message string) error {
+func (r *JsonRpcleService) writeFrameUnaryError(conn net.Conn, id uint64, code int, message string) error {
 	frame := StreamFrame{
 		Code:   code,
 		Msg:    message,
