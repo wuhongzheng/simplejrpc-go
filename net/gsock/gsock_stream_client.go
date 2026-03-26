@@ -41,7 +41,7 @@ func (c *FrameStreamClient) Request(
 	return fmt.Errorf("frame stream client only supports RequestExStream")
 }
 
-// RequestWithFrame sends a request over the frame protocol
+// RequestWithFrame sends a stream request over the frame protocol
 // and forwards each decoded StreamFrame to onResponse until the stream completes.
 func (c *FrameStreamClient) RequestWithFrame(
 	ctx context.Context,
@@ -50,11 +50,10 @@ func (c *FrameStreamClient) RequestWithFrame(
 	onResponse ResponseHandler,
 	header *Header,
 ) error {
-	// check header
 	if header == nil {
 		return fmt.Errorf("stream error: code=%d msg=%s", http.StatusBadRequest, "missing request header")
 	}
-	if header.Mode != CallModeUnary && header.Mode != CallModeStream {
+	if header.Mode != CallModeStream {
 		return fmt.Errorf("stream error: code=%d msg=%s", http.StatusBadRequest, "invalid request mode")
 	}
 
@@ -111,10 +110,6 @@ func (c *FrameStreamClient) RequestWithFrame(
 		var streamFrame StreamFrame
 		if err := json.Unmarshal(frame.Payload, &streamFrame); err != nil {
 			return err
-		}
-
-		if header != nil && header.Mode == CallModeUnary {
-			streamFrame.Stream = false
 		}
 
 		// Process the response of the data through the registered function

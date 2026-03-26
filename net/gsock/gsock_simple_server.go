@@ -283,33 +283,25 @@ func (r *JsonRpcleService) ServeFrameConn(ctx context.Context, conn net.Conn) er
 			return err
 		}
 
-		// If the mode is not set for detection, it defaults to unary
-		if frame.Header.Mode == 0 {
-			frame.Header.Mode = CallModeUnary
+		if frame.Header.Mode != CallModeStream {
+			return fmt.Errorf("invalid frame request mode: %d", frame.Header.Mode)
 		}
 
 		var req RPCRequest
 		if err := json.Unmarshal(frame.Payload, &req); err != nil {
-			if err := r.writeFrameUnaryError(conn, 0, http.StatusBadRequest, "parse error"); err != nil {
-				return err
-			}
-			continue
+			return err
 		}
 		if req.JSONRPC == "" {
 			req.JSONRPC = JSONRPCVersion
 		}
 
 		if err := r.handleFrameRequest(ctx, conn, frame.Header, &req); err != nil {
-			if frame.Header.Mode == CallModeUnary {
-				if err := r.writeFrameUnaryError(conn, req.ID, http.StatusInternalServerError, err.Error()); err != nil {
-					return err
-				}
-			}
+			return err
 		}
 	}
 }
 
-// handleFrameRequest handles a single JSON-RPC request frame.
+// handleFrameRequest handles a single stream request frame.
 func (r *JsonRpcleService) handleFrameRequest(
 	ctx context.Context,
 	conn net.Conn,
@@ -325,12 +317,8 @@ func (r *JsonRpcleService) handleFrameRequest(
 		rawReq.Params = &params
 	}
 
-	var responder StreamResponder
-	var streamID string
-	if header.Mode == CallModeStream {
-		responder = newStreamResponder(ctx, conn, r.codec, rpcReq.ID, rpcReq.Method, "")
-		streamID = responder.StreamID()
-	}
+	responder := newStreamResponder(ctx, conn, r.codec, rpcReq.ID, rpcReq.Method, "")
+	streamID := responder.StreamID()
 
 	request := MakeRequest(
 		WithRequestCtxOption(ctx),
@@ -343,21 +331,10 @@ func (r *JsonRpcleService) handleFrameRequest(
 	r.ProcessRequest(request)
 
 	response, err := r.handler.Handle(request)
-
 	if err != nil {
-		if request.IsStream() && request.Stream() != nil {
-			return request.Stream().Fail(http.StatusInternalServerError, err.Error())
-		}
-		return err
+		return request.Stream().Fail(http.StatusInternalServerError, err.Error())
 	}
 
-	if !request.IsStream() {
-		out, err := r.ProcessResponse(response)
-		if err != nil {
-			return err
-		}
-		return r.writeFrameUnaryResult(conn, rpcReq.ID, out)
-	}
 	return r.handleStreamResponse(request, response)
 }
 

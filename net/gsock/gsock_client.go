@@ -68,6 +68,11 @@ func NewRpcKeepLiveClient(socketPath string) *rpcClient {
 // Request executes a JSON-RPC 2.0 method call and handles response decoding.
 // Automatically manages connection establishment, request ID generation, and error handling.
 //
+// This method is protocol-generic from the client perspective: the caller provides result,
+// and decoding follows the actual JSON-RPC response shape returned by the server.
+// When used against this project's default legacy JSON-RPC server implementation,
+// the response payload is wrapped in Response.
+//
 // Parameters:
 //   - ctx:       Context for cancellation and timeout control
 //   - method:    RPC method name to invoke
@@ -110,6 +115,15 @@ func (c *rpcClient) Request(ctx context.Context, method string, params, result a
 
 // RequestEx Extend support for stream through custom protocols
 //
+// Routing behavior:
+//   - CallModeUnary: uses the legacy JSON-RPC Request path
+//   - CallModeStream: uses the new frame stream protocol
+//
+// Note:
+//   - The unary compatibility path is intentionally tied to this project's legacy server contract.
+//   - That legacy unary contract returns a Response envelope, which is then converted to a StreamFrame.
+//   - Request itself remains generic; only RequestEx unary compatibility assumes the legacy Response shape.
+//
 // Parameters:
 //   - ctx:       Context for cancellation and timeout control
 //   - method:    RPC method name to invoke
@@ -130,11 +144,53 @@ func (c *rpcClient) RequestEx(
 	if err != nil {
 		return err
 	}
-	return c.requestExFrame(ctx, method, params, onResponse, &normalizedHeader)
+
+	switch normalizedHeader.Mode {
+	case CallModeUnary:
+		return c.requestExUnary(ctx, method, params, onResponse)
+	case CallModeStream:
+		return c.requestExStream(ctx, method, params, onResponse, &normalizedHeader)
+	default:
+		return fmt.Errorf("invalid header mode: %d", normalizedHeader.Mode)
+	}
 }
 
-// requestExFrame handles the actual request processing for RequestEx.
-func (c *rpcClient) requestExFrame(
+func (c *rpcClient) requestExUnary(
+	ctx context.Context,
+	method string,
+	params any,
+	onResponse ResponseHandler,
+) error {
+	// The legacy unary compatibility path targets this project's default JSON-RPC server,
+	// whose result payload is wrapped in Response.
+	var result Response
+	if err := c.Request(ctx, method, params, &result); err != nil {
+		return err
+	}
+
+	if onResponse == nil {
+		return nil
+	}
+
+	frame := StreamFrame{
+		Code:   result.Code,
+		Msg:    result.Message,
+		Stream: false,
+		Data:   result.Data,
+		Done:   true,
+	}
+	if result.Meta != nil {
+		frame.Meta = map[string]any{
+			"endpoint": result.Meta.Endpoint,
+			"close":    result.Meta.Close,
+		}
+	}
+
+	return onResponse(frame)
+}
+
+// requestExStream handles the actual request processing for RequestEx.
+func (c *rpcClient) requestExStream(
 	ctx context.Context,
 	method string,
 	params any,
