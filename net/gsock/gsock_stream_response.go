@@ -162,6 +162,7 @@ func (r *rpcSteamResponder) Fail(code int, message string) error {
 	return r.writeFrame(StreamFrame{
 		Code:     code,
 		Msg:      message,
+		Stream:   true,
 		Data:     nil,
 		StreamID: r.streamID,
 		Event:    StreamEventError,
