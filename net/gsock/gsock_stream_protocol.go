@@ -93,9 +93,6 @@ type StreamFrame struct {
 	Meta     map[string]any `json:"meta,omitempty"`
 }
 
-// DefaultStreamHandleTimeout defines the default server-side timeout for a single stream request.
-const DefaultStreamHandleTimeout = 60
-
 // DefaultReadTimeout defines the default timeout for reading from a connection (e.g. during protocol detection).
 const DefaultReadTimeout = 5
 

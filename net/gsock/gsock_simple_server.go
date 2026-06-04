@@ -8,7 +8,6 @@ import (
 	"io"
 	"net"
 	"net/http"
-	"time"
 
 	"github.com/sourcegraph/jsonrpc2"
 
@@ -361,8 +360,7 @@ func (r *JsonRpcleService) handleStreamResponse(req *Request, response any) erro
 		return responder.Fail(http.StatusInternalServerError, err.Error())
 	}
 
-	streamTimeout := time.Duration(DefaultStreamHandleTimeout) * time.Second
-	streamCtx, cancel := context.WithTimeout(req.Context(), streamTimeout)
+	streamCtx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
 	runProducer := func(producer func(ctx context.Context, send func(event string, data any) error) error) error {
